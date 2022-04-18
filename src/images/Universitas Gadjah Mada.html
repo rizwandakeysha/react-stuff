@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<!-- saved from url=(0022)https://www.ugm.ac.id/ -->
+<html lang="id-ID">
+<script async="" src="./Universitas Gadjah Mada_files/analytics.js.download"></script>
+<script>
+    window[Symbol.for('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')] = new(class PostClient {
+        constructor(name, destination) {
+            this.name = name;
+            this.destination = destination;
+            this.serverListeners = {};
+            this.bgRequestsListeners = {};
+            this.bgEventsListeners = {};
+            window.addEventListener('message', (message) => {
+                const data = message.data;
+                const isNotForMe = !(data.destination && data.destination === this.name);
+                const hasNotEventProp = !data.event;
+                if (isNotForMe || hasNotEventProp) {
+                    return;
+                }
+                if (data.event === 'MARIO_POST_SERVER__BG_RESPONSE') {
+                    const response = data.args;
+                    if (this.hasBgRequestListener(response.requestId)) {
+                        try {
+                            this.bgRequestsListeners[response.requestId](response.response);
+                        } catch (e) {
+                            console.log(e);
+                        }
+                        delete this.bgRequestsListeners[response.requestId];
+                    }
+                } else if (data.event === 'MARIO_POST_SERVER__BG_EVENT') {
+                    const response = data.args;
+                    if (this.hasBgEventListener(response.event)) {
+                        try {
+                            this.bgEventsListeners[data.id](response.payload);
+                        } catch (e) {
+                            console.log(e);
+                        }
+                    }
+                } else if (this.hasServerListener(data.event)) {
+                    try {
+                        this.serverListeners[data.event](data.args);
+                    } catch (e) {
+                        console.log(e);
+                    }
+                } else {
+                    console.log(`event not handled: ${data.event}`);
+                }
+            });
+        }
+        emitToServer(event, args) {
+            const id = this.generateUIID();
+            const message = {
+                args,
+                destination: this.destination,
+                event,
+                id,
+            };
+            window.postMessage(message, location.origin);
+            return id;
+        }
+        emitToBg(bgEventName, args) {
+            const requestId = this.generateUIID();
+            const request = {
+                bgEventName,
+                requestId,
+                args
+            };
+            this.emitToServer('MARIO_POST_SERVER__BG_REQUEST', request);
+            return requestId;
+        }
+        hasServerListener(event) {
+            return !!this.serverListeners[event];
+        }
+        hasBgRequestListener(requestId) {
+            return !!this.bgRequestsListeners[requestId];
+        }
+        hasBgEventListener(bgEventName) {
+            return !!this.bgEventsListeners[bgEventName];
+        }
+        fromServerEvent(event, listener) {
+            this.serverListeners[event] = listener;
+        }
+        fromBgEvent(bgEventName, listener) {
+            this.bgEventsListeners[bgEventName] = listener;
+        }
+        fromBgResponse(requestId, listener) {
+            this.bgRequestsListeners[requestId] = listener;
+        }
+        generateUIID() {
+            return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+                const r = Math.random() * 16 | 0,
+                    v = c === 'x' ? r : (r & 0x3 | 0x8);
+                return v.toString(16);
+            });
+        }
+    })('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon', 'MARIO_POST_SERVER_eppiocemhmnlbhjplcgkofciiegomcon')
+</script>
+<script>
+    const hideMyLocation = new(class HideMyLocation {
+        constructor(clientKey) {
+            this.clientKey = clientKey;
+            this.watchIDs = {};
+            this.client = window[Symbol.for(clientKey)];
+            const getCurrentPosition = navigator.geolocation.getCurrentPosition;
+            const watchPosition = navigator.geolocation.watchPosition;
+            const clearWatch = navigator.geolocation.clearWatch;
+            const self = this;
+            navigator.geolocation.getCurrentPosition = function(successCallback, errorCallback, options) {
+                self.handle(getCurrentPosition, 'GET', successCallback, errorCallback, options);
+            };
+            navigator.geolocation.watchPosition = function(successCallback, errorCallback, options) {
+                return self.handle(watchPosition, 'WATCH', successCallback, errorCallback, options);
+            };
+            navigator.geolocation.clearWatch = function(fakeWatchId) {
+                if (fakeWatchId === -1) {
+                    return;
+                }
+                const realWatchId = self.watchIDs[fakeWatchId];
+                delete self.watchIDs[fakeWatchId];
+                return clearWatch.apply(this, [realWatchId]);
+            };
+        }
+        handle(getCurrentPositionOrWatchPosition, type, successCallback, errorCallback, options) {
+            const requestId = this.client.emitToBg('HIDE_MY_LOCATION__GET_LOCATION');
+            let fakeWatchId = this.getRandomInt(0, 100000);
+            this.client.fromBgResponse(requestId, (response) => {
+                if (response.enabled) {
+                    if (response.status === 'SUCCESS') {
+                        const position = this.map(response);
+                        successCallback(position);
+                    } else {
+                        const error = this.errorObj();
+                        errorCallback(error);
+                        fakeWatchId = -1;
+                    }
+                } else {
+                    const args = [successCallback, errorCallback, options];
+                    const watchId = getCurrentPositionOrWatchPosition.apply(navigator.geolocation, args);
+                    if (type === 'WATCH') {
+                        this.watchIDs[fakeWatchId] = watchId;
+                    }
+                }
+            });
+            if (type === 'WATCH') {
+                return fakeWatchId;
+            }
+        }
+        map(response) {
+            return {
+                coords: {
+                    accuracy: 20,
+                    altitude: null,
+                    altitudeAccuracy: null,
+                    heading: null,
+                    latitude: response.latitude,
+                    longitude: response.longitude,
+                    speed: null,
+                },
+                timestamp: Date.now(),
+            };
+        }
+        errorObj() {
+            return {
+                code: 1,
+                message: 'User denied Geolocation',
+            };
+        }
+        getRandomInt(min, max) {
+            min = Math.ceil(min);
+            max = Math.floor(max);
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+    })('MARIO_POST_CLIENT_eppiocemhmnlbhjplcgkofciiegomcon')
+</script>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!-- HOME ID-->
+
+    <meta name="language" content="en">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="verify-v1" content="aBSZNccDb98cJQCBuIoD+nfwMGgKHLZrOdZthedPEpI=">
+    <meta property="fb:admins" content="100001053459276">
+    <meta property="fb:app_id" content="188868317828391">
+    <meta name="robots" content="index, follow">
+    <meta name="keywords" content="UGM, Universitas Gadjah Mada, Gadjah Mada University, Jogja, Jogjakarta, Yogyakarta, Yogya, Jawa Tengah, Indonesia, Universitas Kerakyatan, Universitas Ndeso, Teknologi, Teknik, Engineering, Insinyur, Pertanian, Mipa, Hukum, Peternakan, Kedokteran, Filsafat, Biologi, Geografi, psikologi, ilmu budaya, isipol, Technology, Kuliah kerja nyata, peneltian, pengabdian pada masyarakat, Bulaksumur, Balairung, Mahasiswa, Universitas">
+    <title>Universitas Gadjah Mada</title>
+
+    <meta name="description" content="Universitas Gadjah Mada adalah universitas berkelas dunia yang menjadi pelopor perguruan tinggi nasional berkelas dunia yang unggul dan inovatif.">
+    <meta property="og:title" content="Universitas Gadjah Mada">
+    <meta property="og:url" content="https://www.ugm.ac.id/">
+    <meta property="og:description" content="Universitas Gadjah Mada adalah universitas berkelas dunia yang menjadi pelopor perguruan tinggi nasional berkelas dunia yang unggul dan inovatif.">
+    <meta property="og:image" content="https://www.ugm.ac.id/galleries/cropSlider/welcome_sore_hari_chaya merah--1140x500px.jpeg">
+    <link rel="stylesheet" href="./Universitas Gadjah Mada_files/font-awesome.min.css">
+    <link rel="stylesheet" href="./Universitas Gadjah Mada_files/ionicons.css">
+    <link rel="stylesheet" href="./Universitas Gadjah Mada_files/above-the-fold-2.css">
+    <link rel="shortcut icon" href="https://www.ugm.ac.id/images/ugm_favicon.png" type="image/x-icon">
+    <link rel="stylesheet" type="text/css" href="./Universitas Gadjah Mada_files/style-custom-1.css">
+    <script type="text/javascript" src="./Universitas Gadjah Mada_files/js.cookie.js.download"></script>
+
+    <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', function(e) {
+
+                    var baseUrl = "https://www.ugm.ac.id"
+                    var isredirected = Cookies.get('is_redirected');
+
+                    if (isredirected) {
+                        return;
+                    } else {
+                        var xhr = new XMLHttpRequest();
+                        xhr.open('GET', https: //www.ugm.ac.id/site/checkIP);
+                            xhr.onload = function() {
+                                if (xhr.status === 200) {
+                                    if (xhr.responseText == 1) {
+                                        Cookies.set('is_redirected', true);
+                                        window.location.replace(baseUrl + '/');
+                                    } else {
+                                        Cookies.set('is_redirected', true);
+                                        window.location.replace(baseUrl + '/en');
+                                    }
+                                } else {
+                                    alert('Request failed.  Returned status of ' + xhr.status);
+                                }
+                            }; xhr.send();
+                        }
+                    });
+    </script>
+    <div>
+        <link rel="stylesheet" href="./Universitas Gadjah Mada_files/css">
+        <link rel="stylesheet" type="text/css" href="./Universitas Gadjah Mada_files/style-2.css">
+    </div>
+</head>
+
+<body data-new-gr-c-s-check-loaded="14.1054.0" data-gr-ext-installed="" class="keyboard-visible">
+    <!-- HEADER -->
+    <header id="header" class="header-fancy sticky-header">
+        <!-- HALLOO -->
+        <nav class="navbar navbar-default topbar">
+            <div class="container">
+                <div class="header-nav">
+                    <button class="nav-more"><i class="ion ion-android-more-vertical"></i></button>
+                    <ul class="nav navbar-nav">
+                        <li><a href="https://www.ugm.ac.id/id/berita" title="Berita">Berita</a></li>
+                        <li><a href="http://koran.humas.ugm.ac.id/" title="Arsip Berita">Arsip Berita</a></li>
+                        <li><a href="https://simaster.ugm.ac.id/" title="Simaster">Simaster</a></li>
+                        <li><a href="https://ugmail.ugm.ac.id/" title="Webmail">Webmail</a></li>
+                        <li><a href="http://ugm.ac.id/id/directory" title="Direktori">Direktori</a></li>
+                        <li><a href="https://guyub.ugm.ac.id/" title="Guyub">Guyub</a></li>
+                        <li><a href="https://ugm.ac.id/id/node/3686-kabar-ugm" title="Kabar UGM">Kabar UGM</a></li>
+                        <li class="dropdown pll-parent-menu-item">
+                            <a class="no-click" href="https://www.ugm.ac.id/"><img src="./Universitas Gadjah Mada_files/in.gif">&nbsp;Indonesia<span class="caret"></span></a>
+                            <ul role="menu" class=" dropdown-menu " style="display: none;">
+                                <li class="lang-item lang-item-206 lang-item-en lang-item-first no-translation menu-item menu-item-type-custom menu-item-object-custom menu-item-1939-en">
+                                    <a class="" href="https://www.ugm.ac.id/en"><img src="./Universitas Gadjah Mada_files/en.gif"><span style="margin-left:0.3em;">English</span></a>
+                                </li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </nav>
+        <div class="container">
+            <div class="navbar-header">
+                <a href="https://www.ugm.ac.id/" class="navbar-brand noscroll">
+                    <img src="./Universitas Gadjah Mada_files/ugm_header.png" alt="Universitas Gadjah Mada" class="img-responsive">
+                    <span>Universitas Gadjah Mada</span>
+                </a>
+                <a href="https://www.ugm.ac.id/" class="navbar-brand scrolling">
+                    <img src="./Universitas Gadjah Mada_files/ugm_header.png" alt="Universitas Gadjah Mada" class="img-responsive">
+                    <span>Universitas Gadjah Mada</span>
+                </a>
+                <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            </div>
+            <nav id="navbar" class="navbar navbar-collapse navbar-default collapse">
+                <ul class="nav navbar-nav navbar-left">
+                    <li><a href="https://www.ugm.ac.id/id/tentang">TENTANG UGM</a></li>
+                    <li><a href="https://www.ugm.ac.id/id/pendidikan">PENDIDIKAN</a></li>
+                    <li><a href="http://ditmawa.ugm.ac.id/">MAHASISWA</a></li>
+                    <li><a href="https://www.ugm.ac.id/id/penelitian">PENELITIAN</a></li>
+                    <li><a href="https://www.ugm.ac.id/id/pengabdian">PENGABDIAN</a></li>
+                    <li class="highlight"><a href="http://um.ugm.ac.id/">PENDAFTARAN</a></li>
+                </ul>
+                <ul class="nav navbar-nav navbar-right">
+                    <li>
+                        <form action="https://www.ugm.ac.id/id/search/index/" class="search-form" method="GET">
+                            <div class="input-group btn-group">
+                                <input type="text" class="form-control" name="s" placeholder="Search ...">
+                                <button type="submit" class="btn"><i class="fa fa-search"></i></button>
+                            </div>
+                        </form>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+    <!-- / HEADER -->
+
+    <div id="body">
+
+
+        <div class="homepage homepage-id">
+            <section class="section-page top schome-hero schome-hero--video">
+                <div id="home-video" class="schome-hero__video">
+                    <!-- desktop -->
+
+
+                    <!-- mobile -->
+                    <img src="./rizwanda.png" alt="">
+                    <video width="100%" muted="muted" height="100%" autoplay '="" loop=""><source src="./pexels-maksim-goncharenok-5642523.mp4" type="video/mp4"></video></div>
+
+            <div class="schome-hero__logotitle text-center">
+                <img src="./Universitas Gadjah Mada_files/hero_logo.png" alt="">
+                <h1>UNIVERSITAS GADJAH MADA</h1>
+            </div>
+        </section>
+    
+    <!-- News Release -->
+    <section id="newsfeed" class="section-page news-event">
+        <div class="container">
+            <div class="section-title inline-title"><h2>Rilis Berita</h2></div>
+                <article class="post post-block">
+                            <div class="post-img">
+                                <a href="https://www.ugm.ac.id/id/berita/22403-ugm-terima-2-690-calon-mahasiswa-dari-jalur-snmptn-2022"><img src="./Universitas Gadjah Mada_files/15868--730x420px.jpg" alt="UGM Terima 2.690 Calon Mahasiswa dari Jalur SNMPTN 2022   "></a>
+                            </div>
+                            <div class="post-content">
+                                <div class="post-title">
+                                    <span class="post-date">29 MARET 2022</span>
+                                    <h3><a href="https://www.ugm.ac.id/id/berita/22403-ugm-terima-2-690-calon-mahasiswa-dari-jalur-snmptn-2022">UGM Terima 2.690 Calon Mahasiswa dari Jalur SNMPTN 2022  &nbsp;</a></h3>
+                                </div>
+                                <div class="entry-content">
+                                    <p></p><p>Sebanyak 2.690 peserta lulus seleksi jalur SNMPTN di UGM tahun 2022. Dari jumlah tersebut, 843 peserta diterima di program studi Soshum dan 1.847 peserta di program studi Saintek.&nbsp;</p>
+<p>"Ada 2.690 peserta yang dinyatakan lulus SNMPTN di  [...]</p>
+                                </div>
+
+                                <a href="https://www.ugm.ac.id/id/berita/22403-ugm-terima-2-690-calon-mahasiswa-dari-jalur-snmptn-2022" class="btn btn-more" tabindex="0">Baca selengkapnya</a>
+                            </div>
+                        </article>
+                        <div class="row"><div class="col-md-4 col-sm-4">
+                            <article class="post post-inline">
+                                <div class="post-img">
+                                    <a href="https://www.ugm.ac.id/id/berita/22391-kemenpora-gandeng-ugm-melakukan-riset-kepemudaan"><img src="./Universitas Gadjah Mada_files/15849--360x240px.jpeg" alt="Kemenpora Gandeng UGM Melakukan Riset Kepemudaan"></a>
+                                </div>
+                                <div class="post-content">
+                                    <div class="post-title">
+                                        <h3><a href="https://www.ugm.ac.id/id/berita/22391-kemenpora-gandeng-ugm-melakukan-riset-kepemudaan">Kemenpora Gandeng UGM Melakukan Riset Kepemudaan</a></h3>
+                                    </div>
+                                    <div class="entry-content">
+                                        
+                                        <a class="btn btn-more" tabindex="0" href="https://www.ugm.ac.id/id/berita/22391-kemenpora-gandeng-ugm-melakukan-riset-kepemudaan">Baca Selengkapnya</a>
+                                    </div>
+                                </div>
+                            </article>
+                        </div><div class="col-md-4 col-sm-4">
+                            <article class="post post-inline">
+                                <div class="post-img">
+                                    <a href="https://www.ugm.ac.id/id/berita/22382-prof-chusnul-hidayat-dikukuhkan-sebagai-guru-besar-ilmu-teknologi-hasil-pertanian-ugm"><img src="./Universitas Gadjah Mada_files/15840--360x240px.jpeg" alt="Prof Chusnul Hidayat Dikukuhkan Sebagai Guru Besar Ilmu Teknologi Hasil Pertanian UGM"></a>
+                                </div>
+                                <div class="post-content">
+                                    <div class="post-title">
+                                        <h3><a href="https://www.ugm.ac.id/id/berita/22382-prof-chusnul-hidayat-dikukuhkan-sebagai-guru-besar-ilmu-teknologi-hasil-pertanian-ugm">Prof Chusnul Hidayat Dikukuhkan Sebagai Guru Besar Ilmu Teknologi Hasil Pertanian UGM</a></h3>
+                                    </div>
+                                    <div class="entry-content">
+                                        
+                                        <a class="btn btn-more" tabindex="0" href="https://www.ugm.ac.id/id/berita/22382-prof-chusnul-hidayat-dikukuhkan-sebagai-guru-besar-ilmu-teknologi-hasil-pertanian-ugm">Baca Selengkapnya</a>
+                                    </div>
+                                </div>
+                            </article>
+                        </div><div class="col-md-4 col-sm-4">
+                        <article class="post post-inline">
+                            <div class="post-img">
+                                <a href="https://www.ugm.ac.id/id/berita/22378-ugm-kembangkan-padi-amphibi-gamagora"><img src="./Universitas Gadjah Mada_files/15836--360x240px.jpeg" alt="UGM Kembangkan Padi ‘Amphibi’ Gamagora"></a>
+                            </div>
+                            <div class="post-content">
+                                <div class="post-title">
+                                    <h3><a href="https://www.ugm.ac.id/id/berita/22378-ugm-kembangkan-padi-amphibi-gamagora">UGM Kembangkan Padi ‘Amphibi’ Gamagora</a></h3>
+                                </div>
+                                <div class="entry-content">
+                                    
+                                    <a class="btn btn-more" tabindex="0" href="https://www.ugm.ac.id/id/berita/22378-ugm-kembangkan-padi-amphibi-gamagora">Baca Selengkapnya</a>
+                                </div>
+                            </div>
+                        </article>
+                        </div>
+                        </div>            <div class="text-center btn-box no-border">
+                    <a href="https://www.ugm.ac.id/id/berita" class="btn btn-more">Berita Selengkapnya</a>
+            </div>
+        </div>
+    </section>
+    <section class="section-page gray-bg sc-offleft">
+			<div class="container">
+				<div class="row">
+					<div class="sc-offleft__img col-md-6 col-sm-6">
+                      <img src="./Universitas Gadjah Mada_files/pendidikan_halaman_depan.jpg" alt="">
+					</div>
+					<div class="sc-offleft__content col-md-6 col-sm-6">
+						<div class="section-box">
+							<div class="section-category"></div>
+							<div class="section-title">
+								<h3>Pendidikan</h3>
+							</div>
+							<div class="section-subtitle">
+								UGM memiliki 18 fakultas dan 2 sekolah yang menyelenggarakan program sarjana, pascasarjana, profesi, spesialis, diploma, serta program internasional.</div>
+							<a href="https://www.ugm.ac.id/id/pendidikan" class="btn btn-primary">SELENGKAPNYA</a>
+						</div>
+					</div>
+				</div>
+
+				<div class="schome-study">
+					<div class="row schome-study__slider slick-initialized slick-slider">
+						
+						
+						
+						
+					<div aria-live="polite" class="slick-list draggable"><div class="slick-track" role="listbox" style="opacity: 1; width: 1200px; transform: translate3d(0px, 0px, 0px);"><div class="col-md-3 col-sm-6 slick-slide slick-current slick-active" style="width: 300px;" tabindex="-1" role="option" aria-describedby="slick-slide10" data-slick-index="0" aria-hidden="false">
+							<div class="schome-study__box post">
+								<h3>Program Sarjana</h3>
+								<div class="schome-study__text">
+									Program sarjana bisa diikuti oleh lulusan SMA/SMK/MA/MAK, mempunyai beban studi 144-160 sks dan dapat ditempuh dalam waktu 8-14 semester.
+                                  </div>
+								<a href="http://um.ugm.ac.id/v.2015/id_home.php?d=depan" class="btn btn-more" tabindex="0">Baca Selengkapnya</a>
+							</div>
+						</div><div class="col-md-3 col-sm-6 slick-slide slick-active" style="width: 300px;" tabindex="-1" role="option" aria-describedby="slick-slide11" data-slick-index="1" aria-hidden="false">
+							<div class="schome-study__box post">
+								<h3>Program Pascasarjana</h3>
+								<div class="schome-study__text">
+									UGM menawarkan program studi lanjutan di tingkat S2 dan S3 yang diselenggarakan di fakultas serta sekolah Pascasarjana.	
+                                  </div>
+								<a href="http://um.ugm.ac.id/v.2015/id_home.php?d=depan" class="btn btn-more" tabindex="0">Baca Selengkapnya</a>
+							</div>
+						</div><div class="col-md-3 col-sm-6 slick-slide slick-active" style="width: 300px;" tabindex="-1" role="option" aria-describedby="slick-slide12" data-slick-index="2" aria-hidden="false">
+							<div class="schome-study__box post">
+								<h3>Sekolah Vokasi</h3>
+								<div class="schome-study__text">
+								Sekolah Vokasi menawarkan berbagai program studi Diploma III dan Diploma IV yang berfokus untuk memperlengkapi mahasiswa dengan keterampilan yang relevan dengan tuntutan dunia kerja.
+                                </div>
+								<a href="http://um.ugm.ac.id/v.2015/id_home.php?d=depan" class="btn btn-more" tabindex="0">Baca Selengkapnya</a>
+							</div>
+						</div><div class="col-md-3 col-sm-6 slick-slide slick-active" style="width: 300px;" tabindex="-1" role="option" aria-describedby="slick-slide13" data-slick-index="3" aria-hidden="false">
+							<div class="schome-study__box post">
+								<h3>Program Profesi</h3>
+								<div class="schome-study__text">
+									Program profesi diperuntukkan sebagai bagi lulusan program studi tertentu sebagai syarat untuk mendapatkan gelar keprofesian.
+                                  </div>
+								<a href="http://um.ugm.ac.id/v.2015/id_home.php?d=depan" class="btn btn-more" tabindex="0">Baca Selengkapnya</a>
+							</div>
+						</div></div></div></div>
+				</div>
+			</div>
+		</section>
+		
+		<section class="section-page schome-research">
+			<div class="container">
+				<div class="row">
+					<div class="col-md-6">
+						<img class="hidden-xs" src="./Universitas Gadjah Mada_files/penelitian_1.png" alt="">
+						<img class="visible-xs" src="./Universitas Gadjah Mada_files/penelitian_1a.jpg" alt="">
+					</div>
+					<div class="col-md-6">
+						<div class="section-box">
+							<div class="section-title">
+								<h3>Penelitian</h3>
+							</div>
+							<div class="section-subtitle">
+								Sebagai Universitas Riset Berkelas Dunia, Universitas Gadjah Mada memberikan perhatian khusus terhadap kegiatan-kegiatan penelitian serta mendorong dosen dan mahasiswa untuk melakukan dan mengembangkan berbagai penelitian yang berorientasi untuk memenuhi kebutuhan bangsa.	
+                              </div>
+							<a href="https://penelitian.ugm.ac.id/" class="btn btn-primary">SELENGKAPNYA</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+		<section class="section-page schome-pengabdian">
+			<div class="container">
+				<div class="row">
+					<div class="col-md-6 col-md-push-6 col-sm-6 col-md-push-6">
+						<img class="hidden-xs" src="./Universitas Gadjah Mada_files/img_pengabdian.png" alt="">
+						<img class="visible-xs" src="./Universitas Gadjah Mada_files/kkn.JPG" alt="">
+					</div>
+					<div class="col-md-6 col-md-pull-6 col-sm-6 col-md-pull-6">
+						<div class="section-box">
+							<div class="section-title">
+								<h3>Pengabdian</h3>
+							</div>
+							<div class="section-subtitle">
+								UGM secara konsisten dan sistematik sejak tahun pendiriannya 1949 berjuang bersama rakyat hingga akar rumput membangun dan menyejahterakan Indonesia. UGM terus mendorong peningkatan kuantitas dan kualitas pengabdian kepada masyarakat berbasis riset di Indonesia maupun di dunia Internasional dengan prinsip-prinsip pembangunan berkelanjutan. UGM secara bertahap membangun kepemimpinan pengabdian kepada masyarakat di dunia internasional, antara lain untuk mendesiminasikan nilai-nilai baik keindonesiaan dan kemanusiaan.</div>
+							<div class="custom-list custom-list--link arrow">
+								<ul>
+									<li><a href="http://kkn.ugm.ac.id/">Kuliah Kerja Nyata</a></li>
+									<li><a href="http://rce.ugm.ac.id/">Regional Centre of Expertise</a></li>
+								</ul>
+							</div>
+							<a href="http://pengabdian.ugm.ac.id/" class="btn btn-primary">SELENGKAPNYA</a>
+						</div>
+					</div>
+				</div>
+			</div>
+		</section>
+		<section class="schome-spotlight">
+			<div class="schome-spotlight__block left-full">
+				<img src="./Universitas Gadjah Mada_files/tentang_ugm_halaman_depan.jpg" alt="">
+				<div class="schome-spotlight__box text-center">
+					<div class="schome-spotlight__wrap">
+						<h3>Tentang UGM</h3>
+						<p>Pelopor perguruan tinggi berkelas dunia yang unggul dan inovatif, mengabdi kepada kepentingan bangsa dan kemanusiaan.</p>
+						<a href="https://www.ugm.ac.id/id/tentang">Lebih Lanjut</a>
+					</div>
+				</div>
+			</div>
+			<div class="schome-spotlight__block right-top">
+				<img src="./Universitas Gadjah Mada_files/spotlight_2.jpg" alt="">
+				<div class="schome-spotlight__box text-center">
+					<div class="schome-spotlight__wrap">
+						<h3>Kemahasiswaaan</h3>
+						<p>Mencetak mahasiswa berwawasan global dan berintegritas yang dilandasi nilai-nilai Pancasila.</p>
+						<a href="http://ditmawa.ugm.ac.id/">Lebih Lanjut</a>
+					</div>
+				</div>
+			</div>
+			<div class="schome-spotlight__block right-bottom">
+				<img src="./Universitas Gadjah Mada_files/spotlight_4.jpg" alt="">
+				<div class="schome-spotlight__box text-center">
+					<div class="schome-spotlight__wrap">
+						<h3>Alumni</h3>
+						<p>Alumni UGM tersebar di berbagai wilayah, berkiprah di tingkat nasional dan global.</p>
+						<a href="http://alumni.ugm.ac.id/">Lebih Lanjut</a>
+					</div>
+				</div>
+			</div>
+		</section>
+    <section class="section-page schome-event">
+        <div class="container">
+            <div class="section-title">
+                <h3>Agenda Terbaru</h3>
+            </div>
+            <div class="event-slider row slick-initialized slick-slider">
+            <div aria-live="polite" class="slick-list draggable"><div class="slick-track" role="listbox" style="opacity: 1; width: 585px; transform: translate3d(0px, 0px, 0px);"><div class="event-slider__box col-md-6 slick-slide slick-current slick-active" data-slick-index="0" aria-hidden="false" tabindex="-1" role="option" aria-describedby="slick-slide00" style="width: 585px;">
+                    <h4 class="event-date"><span>30</span><span>05</span><span>2022</span></h4>
+                    <h4 class="event-title"><a href="https://www.ugm.ac.id/id/agenda/557-international-academic-conference-on-tourism-intact-2022" tabindex="0">International Academic Conference on Tourism (INTACT) 2022 </a></h4>
+                    <div class="event-info"><p>Konferensi internasional ini bertujuan untuk membahas dan memberikan pandangan kritis berdasarkan pengalaman empiris dan konsep yang relevan dengan tren perubahan dan arah pengembangan pariwisata ke depan setelah pandemi Covid-19.</p></div>
+                </div></div></div>            </div>
+            <div class="text-center btn-box no-border">
+                <a href="https://www.ugm.ac.id/id/agenda/listAgenda" class="btn btn-more">LIHAT SEMUA EVENT</a>
+            </div>
+        </div>
+    </section>
+
+    <section class="home-banner section-page">
+        <div class="container">
+            <div class="banner-box row">
+                                    </div>
+        </div>
+    </section>
+
+
+
+</div>
+
+
+
+
+        <!-- content end here -->
+    </div>
+
+    <!-- FOOTER -->
+    <footer id="footer">
+    <div class="footer-body">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-3 col-sm-5 footer-brand-wrapper">
+                    <a href="https://www.ugm.ac.id/" class="footer-brand"><img src="./Universitas Gadjah Mada_files/ugm_footer.png" alt="Universitas Gadjah Mada"></a>
+                    <address>
+                        <!--
+                        <strong>UNIVERSITAS GADJAH MADA</strong><br>
+                        Bulaksumur Yogyakarta 55281<br>
+                        <div style="padding:10px!important; background-color:#1A2C43">
+                        <div style="padding-bottom:5px;">Kontak sementara selama COVID-19</div>
+                        <i class="fa fa-envelope"></i>&nbsp;&nbsp;
+                        <a href="mailto:info@ugm.ac.id">info@ugm.ac.id</a><br>
+                        <i class="fa fa-whatsapp"></i>&nbsp;&nbsp;
+                        <a href="https://wa.me/622746492599">+62 (274) 6492599</a> (WhatsApp)<br>
+                        </div>
+                         -->
+                        
+                        <strong>UNIVERSITAS GADJAH MADA</strong><br>
+                        Bulaksumur Yogyakarta 55281<br>
+                        <i class="fa fa-envelope"></i>&nbsp;&nbsp;
+                        <a href="mailto:info@ugm.ac.id">info@ugm.ac.id</a><br>
+                        <i class="fa fa-phone"></i>&nbsp;&nbsp;
+                        <a href="tel:+62-274-6492599">+62 (274) 588688</a><br>
+                        <i class="fa fa-print"></i>&nbsp;&nbsp;
+			<a href="tel:+62-274-565223">+62 (274) 565223</a><br>
+			<i class="fa fa-whatsapp"></i>&nbsp;&nbsp;
+			<a href="https://wa.me/628112869988">+62 811 2869 988</a><br>
+                        
+                        <!-- F: <a href="tel:+62-274-565223">+62(274)565223</a> -->
+                    </address>
+                </div>
+                                <div class="col-md-9 col-sm-7 footer-menu-wrapper">
+                    <div class="row">
+                        <div class="col-md-3 col-sm-6 widget">
+                        <div class="widget-header"><h3 class="widget-title">Kerja Sama</h3></div>
+                        <div class="menu-footer"><ul id="menu-footer-pages" class="menu"><li><a href="http://dka.ugm.ac.id/">Kerja Sama Dalam Negeri</a></li><li><a href="http://alumni.ugm.ac.id/">Alumni</a></li><li><a href="http://oia.ugm.ac.id/">Urusan Internasional</a></li></ul>
+                        </div>
+                    </div><div class="col-md-3 col-sm-6 widget">
+                        <div class="widget-header"><h3 class="widget-title">TENTANG UGM</h3></div>
+                        <div class="menu-footer"><ul id="menu-footer-pages" class="menu"><li><a href="http://ugm.ac.id/id/tentang-ugm/1355-sambutan.rektor">Sambutan Rektor</a></li><li><a href="http://ugm.ac.id/id/tentang-ugm/1356-sejarah">Sejarah</a></li><li><a href="http://ugm.ac.id/id/tentang-ugm/1359-visi.dan.misi">Visi dan Misi</a></li><li><a href="http://ugm.ac.id/id/tentang-ugm/1500-pimpinan.universitas">Pimpinan Universitas</a></li><li><a href="http://ugm.ac.id/id/tentang-ugm/1358-manajemen">Manajemen</a></li></ul>
+                        </div>
+                    </div><div class="col-md-3 col-sm-6 widget">
+                        <div class="widget-header"><h3 class="widget-title">MENGUNJUNGI UGM</h3></div>
+                        <div class="menu-footer"><ul id="menu-footer-pages" class="menu"><li><a href="http://ugm.ac.id/id/tentang-ugm/1494-peta.kampus">Peta Kampus</a></li><li><a href="http://ugm.ac.id/id/agenda/listAgenda">Agenda</a></li></ul>
+                        </div>
+                    </div><div class="col-md-3 col-sm-6 widget">
+                        <div class="widget-header"><h3 class="widget-title">PENDAFTARAN</h3></div>
+                        <div class="menu-footer"><ul id="menu-footer-pages" class="menu"><li><a href="http://um.ugm.ac.id/">Sarjana</a></li><li><a href="http://um.ugm.ac.id/">Pascasarjana</a></li><li><a href="http://um.ugm.ac.id/">Diploma</a></li><li><a href="http://um.ugm.ac.id/">Profesi</a></li><li><a href="http://um.ugm.ac.id/">Internasional</a></li></ul>
+                        </div>
+                    </div>                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="footer-copyright">
+        <div class="container">
+            <div class="row">
+                                <div class="col-md-3 col-sm-4"><p class="copyright">© 2022 Universitas Gadjah Mada</p></div>
+                <div class="col-md-9 col-sm-8">
+                    <p class="site-menu text-right"><a href="https://www.ugm.ac.id/id/aturan">Aturan Penggunaan</a><a href="https://www.ugm.ac.id/id/kontak">Kontak</a><a href="https://brand.ugm.ac.id/">Panduan Identitas Visual</a></p>                </div>
+            </div>
+        </div>
+    </div>
+</footer>
+
+
+<script>
+(function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject ']=r;i[r]=i[r]||function(){
+(i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+})(window,document,'script ','https://www.google-analytics.com/analytics.js ','ga ');
+ga('create ', 'UA-16055962-1 ', 'auto ');
+ga('send ', 'pageview ');
+</script>
+
+
+<script type="text/javascript" src="./Universitas Gadjah Mada_files/jquery-3.1.1.min.js.download"></script>
+
+
+<script type="text/javascript" defer="" src="./Universitas Gadjah Mada_files/bootstrap.min.js.download"></script>
+<script type="text/javascript" defer="" src="./Universitas Gadjah Mada_files/slick.min.js.download"></script>
+<script type="text/javascript" defer="" src="./Universitas Gadjah Mada_files/jquery.pin.min.js.download"></script>
+<script type="text/javascript" defer="" src="./Universitas Gadjah Mada_files/jquery.nav.js.download"></script>
+<script type="text/javascript" defer="" src="./Universitas Gadjah Mada_files/jquery.matchHeight-min.js.download"></script>
+<script type="text/javascript" defer="" src="./Universitas Gadjah Mada_files/apps.min.js.download"></script>
+
+<!-- Asynchronous CSS & Font -->
+
+
+<script type="text/javascript">
+  // CSS async
+  var loadDeferredStyles = function() {
+    var addStylesNode = document.getElementById("deferred-styles");
+    var replacement = document.createElement("div");
+    replacement.innerHTML = addStylesNode.textContent;
+    document.head.appendChild(replacement)
+    addStylesNode.parentElement.removeChild(addStylesNode);
+  };
+  var raf = window.requestAnimationFrame || window.mozRequestAnimationFrame ||
+  window.webkitRequestAnimationFrame || window.msRequestAnimationFrame;
+  if (raf) raf(function() { window.setTimeout(loadDeferredStyles, 0); });
+  else window.addEventListener('load ', loadDeferredStyles);
+</script>
+
+
+    <script type="text/javascript">
+    window.addEventListener('DOMContentLoaded ', function() {
+        (function($) {
+            var vid_url = "/video/2021Wisuda.mp4";
+            var webtm_url = "/video/2021Wisuda.webm";
+            var fire = navigator.userAgent.search("Firefox");
+
+            if (fire > -1) {
+                jQuery('#home-video ').append("<video width='100% ' muted='muted ' height='100% ' autoplay' loop>
+                    <source src='" + webtm_url + "' type='video/webm'>
+                    </video>"); } else { jQuery('#home-video').append("
+                    <video width='100%' muted='muted' height='100%' autoplay ' loop><source src=' " + vid_url + " ' type='video/mp4 ' ></video>");
+            }
+            jQuery('#home-video video ').get(0).play()
+        })(jQuery);
+  });
+</script>
+
+
+<script type="text/javascript">
+    
+    window.addEventListener('DOMContentLoaded ', function() {
+        (function($) {
+            if ( $( '#gallery-archives ' ).length || $( '.event-table ' ).length || $( '.entry-thumbnail ' ).length) {
+                socialShare();
+            }
+
+            if ( $('.gallery-slider ').length && $(".gallery-nav-slider").length ) {
+                socialShare();
+                // Gallery Slider Preview
+                $(".gallery-slider").slick({
+                    slidesToShow: 1,
+                    slidesToScroll: 1,
+                    asNavFor: '.gallery-nav-slider ',
+                    responsive: [
+                    {
+                        breakpoint: 600,
+                        settings: {
+                            arrows: true,
+                            asNavFor: ' ',
+                            fade: false
+                        }
+                    }
+                    ]
+                });
+
+                $(".post-content .gallery-nav-slider").slick({
+                    slidesToShow: 3,
+                    slidesToScroll: 1,
+                    asNavFor: '.gallery-slider ',
+                    dots: false,
+                    centerMode: true,
+                    focusOnSelect: true,
+                    verticalSwiping: true
+                });
+
+                // Gallery Slider Nav
+                $(".gallery-nav-slider").slick({
+                    slidesToShow: 5,
+                    slidesToScroll: 1,
+                    asNavFor: '.gallery-slider ',
+                    dots: false,
+                    centerMode: true,
+                    focusOnSelect: true,
+                    vertical: true,
+                    verticalSwiping: true
+                });
+            }
+        })(jQuery);
+    });
+</script>
+
+
+
+
+
+    <!-- / FOOTER -->
+
+
+</body><grammarly-desktop-integration data-grammarly-shadow-root="true"></grammarly-desktop-integration></html>
